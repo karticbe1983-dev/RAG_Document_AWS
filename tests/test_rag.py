@@ -8,7 +8,7 @@ from src.rag.document_loader import S3DocumentLoader, Document
 from src.rag.embeddings import BedrockEmbeddings
 from src.rag.retriever import RAGRetriever
 from src.rag.generator import RAGGenerator, RAGResponse
-from src.rag.vector_store import SearchResult
+from src.rag.vector_store import OpenSearchVectorStore, SearchResult
 from src.chunking.base import Chunk
 
 
@@ -124,31 +124,116 @@ class TestRAGRetriever:
         retriever = RAGRetriever(embeddings=embeddings, vector_store=vector_store)
         return retriever, embeddings, vector_store
 
-    def test_retrieve_embeds_question_then_searches(self) -> None:
-        """retrieve() calls embed() once and passes the result to similarity_search()."""
+    def test_retrieve_uses_hybrid_search_by_default(self) -> None:
+        """retrieve() calls hybrid_search() when use_hybrid=True (the default)."""
+        retriever, embeddings, vector_store = self._make_retriever()
+        vector_store.hybrid_search.return_value = []
+        retriever.retrieve("What is RAG?", top_k=3)
+        embeddings.embed.assert_called_once_with("What is RAG?")
+        vector_store.hybrid_search.assert_called_once_with(
+            [0.1] * 1024, "What is RAG?", top_k=3, filters=None
+        )
+        vector_store.similarity_search.assert_not_called()
+
+    def test_retrieve_falls_back_to_vector_only_when_hybrid_disabled(self) -> None:
+        """retrieve(use_hybrid=False) calls similarity_search() instead of hybrid_search()."""
         retriever, embeddings, vector_store = self._make_retriever()
         vector_store.similarity_search.return_value = []
-        retriever.retrieve("What is RAG?", top_k=3)
+        retriever.retrieve("What is RAG?", top_k=3, use_hybrid=False)
         embeddings.embed.assert_called_once_with("What is RAG?")
         vector_store.similarity_search.assert_called_once_with(
             [0.1] * 1024, top_k=3, filters=None
         )
+        vector_store.hybrid_search.assert_not_called()
 
-    def test_retrieve_forwards_filters(self) -> None:
-        """retrieve() passes the filters dict through to similarity_search()."""
+    def test_retrieve_forwards_filters_to_hybrid_search(self) -> None:
+        """retrieve() passes the filters dict through to hybrid_search()."""
         retriever, _, vector_store = self._make_retriever()
-        vector_store.similarity_search.return_value = []
+        vector_store.hybrid_search.return_value = []
         retriever.retrieve("q", top_k=5, filters={"document_id": "doc_1"})
-        _, kwargs = vector_store.similarity_search.call_args
+        _, kwargs = vector_store.hybrid_search.call_args
         assert kwargs["filters"] == {"document_id": "doc_1"}
 
     def test_retrieve_returns_search_results(self) -> None:
-        """retrieve() returns whatever similarity_search() returns."""
+        """retrieve() returns whatever the search method returns."""
         retriever, _, vector_store = self._make_retriever()
         fake_result = MagicMock(spec=SearchResult)
-        vector_store.similarity_search.return_value = [fake_result]
+        vector_store.hybrid_search.return_value = [fake_result]
         results = retriever.retrieve("q")
         assert results == [fake_result]
+
+
+# ── OpenSearch Hybrid Search ──────────────────────────────────────────────────
+
+class TestHybridSearch:
+    def _make_store(self) -> OpenSearchVectorStore:
+        with patch("boto3.Session"):
+            with patch("src.rag.vector_store.OpenSearch"):
+                store = OpenSearchVectorStore(
+                    endpoint="search.example.com",
+                    index_name="rag-index",
+                    region="us-east-1",
+                )
+        store._client = MagicMock()
+        return store
+
+    def _os_hit(self, content: str, score: float, chunk_id: str = "c1") -> dict:
+        return {
+            "_score": score,
+            "_source": {
+                "content": content,
+                "chunk_id": chunk_id,
+                "document_id": "doc1",
+                "metadata": {"source": "s3://bucket/doc.md"},
+            },
+        }
+
+    def test_hybrid_search_sends_bool_should_query(self) -> None:
+        """hybrid_search() issues a bool/should query with knn and match clauses."""
+        store = self._make_store()
+        store._client.search.return_value = {"hits": {"hits": []}}
+        store.hybrid_search([0.1] * 1024, "What is RAG?", top_k=3)
+
+        _, kwargs = store._client.search.call_args
+        query = kwargs["body"]["query"]
+        assert "bool" in query
+        clauses = query["bool"]["should"]
+        types = {list(c.keys())[0] for c in clauses}
+        assert "knn" in types
+        assert "match" in types
+
+    def test_hybrid_search_returns_search_results(self) -> None:
+        """hybrid_search() maps OpenSearch hits to SearchResult objects correctly."""
+        store = self._make_store()
+        store._client.search.return_value = {
+            "hits": {"hits": [self._os_hit("RAG combines retrieval and generation", 1.5)]}
+        }
+        results = store.hybrid_search([0.1] * 1024, "What is RAG?", top_k=1)
+        assert len(results) == 1
+        assert results[0].score == 1.5
+        assert results[0].chunk.content == "RAG combines retrieval and generation"
+
+    def test_hybrid_search_applies_filters(self) -> None:
+        """hybrid_search() adds a bool/filter clause when filters are supplied."""
+        store = self._make_store()
+        store._client.search.return_value = {"hits": {"hits": []}}
+        store.hybrid_search(
+            [0.1] * 1024, "q", top_k=3, filters={"document_id": "doc_1"}
+        )
+        _, kwargs = store._client.search.call_args
+        query = kwargs["body"]["query"]
+        assert "filter" in query["bool"]
+        assert {"term": {"document_id": "doc_1"}} in query["bool"]["filter"]
+
+    def test_hybrid_search_respects_bm25_boost(self) -> None:
+        """hybrid_search() applies the given boost to the match clause."""
+        store = self._make_store()
+        store._client.search.return_value = {"hits": {"hits": []}}
+        store.hybrid_search([0.1] * 1024, "q", top_k=3, bm25_boost=0.3)
+        _, kwargs = store._client.search.call_args
+        clauses = kwargs["body"]["query"]["bool"]["should"]
+        match_clause = next(c for c in clauses if "match" in c)
+        assert match_clause["match"]["content"]["boost"] == 0.3
 
 
 # ── RAG Generator ─────────────────────────────────────────────────────────────

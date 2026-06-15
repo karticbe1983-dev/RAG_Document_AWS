@@ -46,6 +46,7 @@ class RAGState(TypedDict):
     filters: dict[str, Any]
     s3_prefix: str
     force_reindex: bool
+    use_hybrid: bool
 
     # ── Pipeline stages ───────────────────────────────────────────────────────
     documents: list[Document]

@@ -8,7 +8,7 @@ from typing import Any
 import boto3
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
-from config.settings import AWS_REGION, EMBED_DIMENSIONS, OPENSEARCH_PORT
+from config.settings import AWS_REGION, BM25_BOOST, EMBED_DIMENSIONS, OPENSEARCH_PORT
 from ..chunking.base import Chunk
 
 logger = logging.getLogger(__name__)
@@ -160,6 +160,62 @@ class OpenSearchVectorStore:
             body={"query": knn_query, "size": top_k},
         )
 
+        results: list[SearchResult] = []
+        for hit in response["hits"]["hits"]:
+            source = hit["_source"]
+            chunk = Chunk(
+                content=source["content"],
+                metadata=source.get("metadata", {}),
+                chunk_id=source.get("chunk_id", ""),
+                document_id=source.get("document_id", ""),
+            )
+            results.append(SearchResult(chunk=chunk, score=hit["_score"]))
+        return results
+
+    def hybrid_search(
+        self,
+        query_embedding: list[float],
+        question: str,
+        top_k: int,
+        bm25_boost: float = BM25_BOOST,
+        filters: dict[str, Any] | None = None,
+    ) -> list[SearchResult]:
+        """Run a hybrid knn + BM25 query and return the *top_k* most relevant chunks.
+
+        Combines vector similarity (knn) with full-text keyword matching (BM25)
+        in a single ``bool/should`` query.  OpenSearch sums the clause scores, so
+        a chunk that ranks well on both axes scores higher than one that only ranks
+        well on one.  *bm25_boost* controls the relative weight of keyword vs vector.
+
+        Args:
+            query_embedding: Dense vector for the query (same model as at index time).
+            question: Raw question text used for the BM25 ``match`` clause.
+            top_k: Number of results to return.
+            bm25_boost: Boost multiplier applied to the BM25 clause score.
+            filters: Optional ``{field: value}`` term filters applied as a
+                ``bool/filter`` (zero-score, pre-filter semantics).
+
+        Returns:
+            List of SearchResult objects ordered by descending combined score.
+        """
+        query: dict[str, Any] = {
+            "bool": {
+                "should": [
+                    {"knn": {"embedding": {"vector": query_embedding, "k": top_k}}},
+                    {"match": {"content": {"query": question, "boost": bm25_boost}}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }
+        if filters:
+            query["bool"]["filter"] = [
+                {"term": {k: v}} for k, v in filters.items()
+            ]
+
+        response = self._client.search(
+            index=self.index_name,
+            body={"query": query, "size": top_k},
+        )
         results: list[SearchResult] = []
         for hit in response["hits"]["hits"]:
             source = hit["_source"]

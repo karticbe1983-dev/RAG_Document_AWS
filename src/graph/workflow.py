@@ -9,6 +9,7 @@ from langgraph.graph import StateGraph, END
 from config.settings import (
     AWS_REGION,
     EMBED_MODEL_ID,
+    HYBRID_SEARCH_ENABLED,
     LLM_MODEL_ID,
     EMBED_DIMENSIONS,
     DEFAULT_TOP_K,
@@ -86,21 +87,36 @@ class RAGWorkflow:
     Error paths at every stage route to ``handle_error → END``.
     """
 
-    def __init__(self, config: WorkflowConfig) -> None:
+    def __init__(
+        self,
+        config: WorkflowConfig,
+        *,
+        loader: Any = None,
+        embeddings: Any = None,
+        vector_store: Any = None,
+        generator: Any = None,
+    ) -> None:
         """Initialise all service clients and compile the LangGraph state graph.
+
+        Each component can be overridden via keyword argument to swap in local
+        or mock alternatives without AWS (useful for local dev and unit tests).
 
         Args:
             config: Workflow configuration including bucket name, OpenSearch endpoint,
                 and model IDs.
+            loader: Override for ``S3DocumentLoader`` (e.g. ``LocalDocumentLoader``).
+            embeddings: Override for ``BedrockEmbeddings`` (e.g. ``LocalEmbeddings``).
+            vector_store: Override for ``OpenSearchVectorStore`` (e.g. ``InMemoryVectorStore``).
+            generator: Override for ``RAGGenerator`` (e.g. ``LocalGenerator``).
         """
         self.config = config
-        self._loader = S3DocumentLoader(config.s3_bucket, config.aws_region)
-        self._embeddings = BedrockEmbeddings(
+        self._loader = loader or S3DocumentLoader(config.s3_bucket, config.aws_region)
+        self._embeddings = embeddings or BedrockEmbeddings(
             model_id=config.embed_model_id,
             region=config.aws_region,
             dimensions=config.embed_dimensions,
         )
-        self._vector_store = OpenSearchVectorStore(
+        self._vector_store = vector_store or OpenSearchVectorStore(
             endpoint=config.opensearch_endpoint,
             index_name=config.opensearch_index,
             region=config.aws_region,
@@ -110,7 +126,7 @@ class RAGWorkflow:
             embeddings=self._embeddings,
             vector_store=self._vector_store,
         )
-        self._generator = RAGGenerator(
+        self._generator = generator or RAGGenerator(
             llm_model_id=config.llm_model_id,
             region=config.aws_region,
         )
@@ -251,6 +267,7 @@ class RAGWorkflow:
         s3_prefix: str = "",
         force_reindex: bool = False,
         filters: dict[str, Any] | None = None,
+        use_hybrid: bool = HYBRID_SEARCH_ENABLED,
     ) -> dict[str, Any]:
         """Execute the full RAG pipeline and return the structured result.
 
@@ -262,6 +279,8 @@ class RAGWorkflow:
             force_reindex: When ``True``, re-chunk, re-embed, and re-index all
                 documents before retrieving.  Set ``False`` to use the existing index.
             filters: Optional OpenSearch term filters forwarded to the retriever.
+            use_hybrid: When ``True`` (default), blends knn vector search with
+                BM25 keyword search.  Set ``False`` to use pure vector search only.
 
         Returns:
             Dict with keys ``question``, ``answer``, ``sources``,
@@ -275,6 +294,7 @@ class RAGWorkflow:
             "filters": filters or {},
             "s3_prefix": s3_prefix,
             "force_reindex": force_reindex,
+            "use_hybrid": use_hybrid,
             "documents": [],
             "chunks": [],
             "embeddings": [],

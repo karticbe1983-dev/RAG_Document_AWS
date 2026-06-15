@@ -8,7 +8,7 @@ that accepts a ``RAGState`` dict and returns a partial-state update dict.
 import logging
 from typing import Any
 
-from config.settings import DEFAULT_TOP_K, CHUNK_PREVIEW_LEN, QUESTION_LOG_LEN
+from config.settings import DEFAULT_TOP_K, CHUNK_PREVIEW_LEN, HYBRID_SEARCH_ENABLED, QUESTION_LOG_LEN
 from .state import RAGState
 from ..chunking.factory import ChunkingFactory, ChunkingStrategy
 from ..rag.document_loader import S3DocumentLoader
@@ -204,13 +204,17 @@ def build_retrieve_node(retriever: RAGRetriever) -> Any:
         question = state.get("question", "")
         top_k = state.get("top_k", DEFAULT_TOP_K)
         filters = state.get("filters") or None
+        use_hybrid = state.get("use_hybrid", HYBRID_SEARCH_ENABLED)
         logger.info(
-            "Retrieving top-%d chunks for question: %s",
+            "Retrieving top-%d chunks for question: %s (hybrid=%s)",
             top_k,
             question[:QUESTION_LOG_LEN],
+            use_hybrid,
         )
         try:
-            results = retriever.retrieve(question, top_k=top_k, filters=filters)
+            results = retriever.retrieve(
+                question, top_k=top_k, filters=filters, use_hybrid=use_hybrid
+            )
             return {
                 "search_results": results,
                 "processing_steps": state.get("processing_steps", [])

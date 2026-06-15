@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from config.settings import DEFAULT_TOP_K
+from config.settings import DEFAULT_TOP_K, HYBRID_SEARCH_ENABLED
 from .embeddings import BedrockEmbeddings
 from .vector_store import OpenSearchVectorStore, SearchResult
 
@@ -37,18 +37,31 @@ class RAGRetriever:
         question: str,
         top_k: int = DEFAULT_TOP_K,
         filters: dict[str, Any] | None = None,
+        use_hybrid: bool = HYBRID_SEARCH_ENABLED,
     ) -> list[SearchResult]:
-        """Embed *question* and return the *top_k* most similar chunks.
+        """Embed *question* and return the *top_k* most relevant chunks.
+
+        When *use_hybrid* is ``True`` (the default, controlled by
+        ``HYBRID_SEARCH_ENABLED``), blends knn vector search with BM25 keyword
+        search so that exact-term queries (API names, error codes) and semantic
+        queries both score well.  Falls back to pure vector search when
+        ``use_hybrid=False``.
 
         Args:
             question: Natural-language question to search for.
             top_k: Number of chunks to return.
             filters: Optional OpenSearch term filters (e.g. ``{"document_id": "doc_1"}``).
+            use_hybrid: Override the global ``HYBRID_SEARCH_ENABLED`` setting for
+                this call.  Useful in tests or when comparing retrieval modes.
 
         Returns:
-            List of SearchResult objects ordered by descending similarity score.
+            List of SearchResult objects ordered by descending combined score.
         """
         query_embedding = self.embeddings.embed(question)
+        if use_hybrid:
+            return self.vector_store.hybrid_search(
+                query_embedding, question, top_k=top_k, filters=filters
+            )
         return self.vector_store.similarity_search(
             query_embedding, top_k=top_k, filters=filters
         )
