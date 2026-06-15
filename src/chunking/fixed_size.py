@@ -1,18 +1,46 @@
+"""Fixed-size character chunker with configurable overlap."""
+
 from typing import Any
+
+from config.settings import FIXED_CHUNK_SIZE, FIXED_CHUNK_OVERLAP
 from .base import BaseChunker, Chunk
 
 
 class FixedSizeChunker(BaseChunker):
-    """Split text into fixed-size character chunks with optional overlap."""
+    """Split text into fixed-size character chunks with optional overlap.
 
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+    The simplest chunking strategy: slide a window of *chunk_size* characters
+    across the text, advancing by ``chunk_size - chunk_overlap`` each step.
+    No attempt is made to align splits with word or sentence boundaries.
+    """
+
+    def __init__(
+        self,
+        chunk_size: int = FIXED_CHUNK_SIZE,
+        chunk_overlap: int = FIXED_CHUNK_OVERLAP,
+    ) -> None:
+        """Initialise the chunker.
+
+        Args:
+            chunk_size: Maximum number of characters per chunk.
+            chunk_overlap: Number of characters shared between consecutive chunks.
+        """
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
     def chunk(self, text: str, metadata: dict[str, Any] | None = None) -> list[Chunk]:
+        """Split *text* into fixed-size character chunks.
+
+        Args:
+            text: Source text to split.
+            metadata: Passed through to every produced Chunk.
+
+        Returns:
+            List of Chunks whose content lengths are at most *chunk_size*.
+        """
         metadata = metadata or {}
         doc_id = metadata.get("document_id", "doc")
-        chunks = []
+        chunks: list[Chunk] = []
         start = 0
         index = 0
 

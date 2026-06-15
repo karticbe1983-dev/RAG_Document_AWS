@@ -1,18 +1,46 @@
+"""LangGraph node builder functions for every stage of the RAG pipeline.
+
+Each ``build_*`` function is a factory that closes over its dependencies
+(loader, embeddings, vector store, or generator) and returns a plain function
+that accepts a ``RAGState`` dict and returns a partial-state update dict.
+"""
+
 import logging
 from typing import Any
+
+from config.settings import DEFAULT_TOP_K, CHUNK_PREVIEW_LEN, QUESTION_LOG_LEN
 from .state import RAGState
 from ..chunking.factory import ChunkingFactory, ChunkingStrategy
 from ..rag.document_loader import S3DocumentLoader
 from ..rag.embeddings import BedrockEmbeddings
+from ..rag.retriever import RAGRetriever
+from ..rag.generator import RAGGenerator
 from ..rag.vector_store import OpenSearchVectorStore
 
 logger = logging.getLogger(__name__)
 
 
-def build_load_documents_node(loader: S3DocumentLoader):
-    """Load markdown documents from S3."""
+def build_load_documents_node(
+    loader: S3DocumentLoader,
+) -> Any:
+    """Return a node that loads documents from S3 into the pipeline state.
+
+    Args:
+        loader: Configured S3DocumentLoader instance.
+
+    Returns:
+        LangGraph-compatible node function.
+    """
 
     def load_documents(state: RAGState) -> dict[str, Any]:
+        """Fetch all documents from S3 and store them in state.
+
+        Args:
+            state: Current pipeline state.
+
+        Returns:
+            Partial state update with ``documents`` and ``processing_steps``.
+        """
         logger.info("Loading documents from S3 (prefix=%s)", state.get("s3_prefix", ""))
         try:
             docs = loader.load_all(prefix=state.get("s3_prefix", ""))
@@ -28,10 +56,29 @@ def build_load_documents_node(loader: S3DocumentLoader):
     return load_documents
 
 
-def build_chunk_documents_node(embeddings_fn: BedrockEmbeddings | None = None):
-    """Apply the selected chunking strategy to loaded documents."""
+def build_chunk_documents_node(
+    embeddings_fn: BedrockEmbeddings | None = None,
+) -> Any:
+    """Return a node that applies the state-selected chunking strategy.
+
+    Args:
+        embeddings_fn: Required only for the semantic strategy, which needs
+            an embedding function at chunk time to compute sentence similarities.
+
+    Returns:
+        LangGraph-compatible node function.
+    """
 
     def chunk_documents(state: RAGState) -> dict[str, Any]:
+        """Split loaded documents into chunks using the strategy in state.
+
+        Args:
+            state: Current pipeline state; must contain ``documents`` and
+                ``chunking_strategy``.
+
+        Returns:
+            Partial state update with ``chunks`` and ``processing_steps``.
+        """
         strategy = state.get("chunking_strategy", ChunkingStrategy.RECURSIVE.value)
         documents = state.get("documents", [])
         logger.info("Chunking %d documents using strategy: %s", len(documents), strategy)
@@ -44,8 +91,7 @@ def build_chunk_documents_node(embeddings_fn: BedrockEmbeddings | None = None):
         all_chunks = []
         for doc in documents:
             meta = {**doc.metadata, "document_id": doc.document_id}
-            chunks = chunker.chunk(doc.content, metadata=meta)
-            all_chunks.extend(chunks)
+            all_chunks.extend(chunker.chunk(doc.content, metadata=meta))
 
         return {
             "chunks": all_chunks,
@@ -56,10 +102,25 @@ def build_chunk_documents_node(embeddings_fn: BedrockEmbeddings | None = None):
     return chunk_documents
 
 
-def build_embed_chunks_node(embeddings: BedrockEmbeddings):
-    """Embed all chunks using Bedrock Titan Embeddings."""
+def build_embed_chunks_node(embeddings: BedrockEmbeddings) -> Any:
+    """Return a node that embeds all chunks in the pipeline state.
+
+    Args:
+        embeddings: Configured BedrockEmbeddings instance.
+
+    Returns:
+        LangGraph-compatible node function.
+    """
 
     def embed_chunks(state: RAGState) -> dict[str, Any]:
+        """Embed every chunk and store the vectors in state.
+
+        Args:
+            state: Current pipeline state; must contain ``chunks``.
+
+        Returns:
+            Partial state update with ``embeddings`` and ``processing_steps``.
+        """
         chunks = state.get("chunks", [])
         logger.info("Embedding %d chunks", len(chunks))
         try:
@@ -77,17 +138,35 @@ def build_embed_chunks_node(embeddings: BedrockEmbeddings):
     return embed_chunks
 
 
-def build_store_vectors_node(vector_store: OpenSearchVectorStore):
-    """Store chunk embeddings in OpenSearch (only when re-indexing)."""
+def build_store_vectors_node(vector_store: OpenSearchVectorStore) -> Any:
+    """Return a node that writes chunks and their embeddings to OpenSearch.
+
+    The node is a no-op when ``force_reindex`` is ``False`` in state.
+
+    Args:
+        vector_store: Configured OpenSearchVectorStore instance.
+
+    Returns:
+        LangGraph-compatible node function.
+    """
 
     def store_vectors(state: RAGState) -> dict[str, Any]:
-        chunks = state.get("chunks", [])
-        embeddings = state.get("embeddings", [])
+        """Index chunks into OpenSearch when force_reindex is True.
+
+        Args:
+            state: Current pipeline state; must contain ``chunks``, ``embeddings``,
+                and ``force_reindex``.
+
+        Returns:
+            Partial state update with ``processing_steps``.
+        """
         if not state.get("force_reindex", False):
             return {
                 "processing_steps": state.get("processing_steps", [])
                 + ["Skipped vector store update (force_reindex=False)"]
             }
+        chunks = state.get("chunks", [])
+        embeddings = state.get("embeddings", [])
         try:
             vector_store.create_index()
             added = vector_store.add_chunks(chunks, embeddings)
@@ -102,17 +181,36 @@ def build_store_vectors_node(vector_store: OpenSearchVectorStore):
     return store_vectors
 
 
-def build_retrieve_node(embeddings: BedrockEmbeddings, vector_store: OpenSearchVectorStore):
-    """Retrieve relevant chunks for the user question."""
+def build_retrieve_node(retriever: RAGRetriever) -> Any:
+    """Return a node that retrieves the top-k chunks for the user question.
+
+    Args:
+        retriever: Configured RAGRetriever instance.
+
+    Returns:
+        LangGraph-compatible node function.
+    """
 
     def retrieve(state: RAGState) -> dict[str, Any]:
+        """Embed the question and fetch the most relevant chunks from OpenSearch.
+
+        Args:
+            state: Current pipeline state; must contain ``question``, ``top_k``,
+                and optionally ``filters``.
+
+        Returns:
+            Partial state update with ``search_results`` and ``processing_steps``.
+        """
         question = state.get("question", "")
-        top_k = state.get("top_k", 5)
+        top_k = state.get("top_k", DEFAULT_TOP_K)
         filters = state.get("filters") or None
-        logger.info("Retrieving top-%d chunks for question: %s", top_k, question[:80])
+        logger.info(
+            "Retrieving top-%d chunks for question: %s",
+            top_k,
+            question[:QUESTION_LOG_LEN],
+        )
         try:
-            query_embedding = embeddings.embed(question)
-            results = vector_store.similarity_search(query_embedding, top_k=top_k, filters=filters)
+            results = retriever.retrieve(question, top_k=top_k, filters=filters)
             return {
                 "search_results": results,
                 "processing_steps": state.get("processing_steps", [])
@@ -125,18 +223,35 @@ def build_retrieve_node(embeddings: BedrockEmbeddings, vector_store: OpenSearchV
     return retrieve
 
 
-def build_generate_node(retriever):
-    """Generate an answer using retrieved context and Bedrock Claude."""
+def build_generate_node(generator: RAGGenerator) -> Any:
+    """Return a node that generates an answer from already-retrieved chunks.
+
+    Args:
+        generator: Configured RAGGenerator instance.
+
+    Returns:
+        LangGraph-compatible node function.
+    """
 
     def generate(state: RAGState) -> dict[str, Any]:
+        """Call the LLM with the question and the search_results already in state.
+
+        Args:
+            state: Current pipeline state; must contain ``question`` and
+                ``search_results``.
+
+        Returns:
+            Partial state update with ``answer``, ``sources``, ``token_usage``,
+            and ``processing_steps``.
+        """
         question = state.get("question", "")
         results = state.get("search_results", [])
         logger.info("Generating answer from %d retrieved chunks", len(results))
         try:
-            response = retriever.query(question, top_k=len(results) or 5)
+            response = generator.generate(question, results)
             sources = [
                 {
-                    "content": r.chunk.content[:200],
+                    "content": r.chunk.content[:CHUNK_PREVIEW_LEN],
                     "score": r.score,
                     "source": r.chunk.metadata.get("source", ""),
                     "chunk_id": r.chunk.chunk_id,
@@ -160,16 +275,13 @@ def build_generate_node(retriever):
     return generate
 
 
-def route_by_chunking_strategy(state: RAGState) -> str:
-    """Conditional edge: route to the appropriate chunking node label."""
-    strategy = state.get("chunking_strategy", ChunkingStrategy.RECURSIVE.value)
-    valid = ChunkingFactory.available_strategies()
-    if strategy not in valid:
-        logger.warning("Unknown strategy '%s', defaulting to recursive", strategy)
-        return ChunkingStrategy.RECURSIVE.value
-    return strategy
-
-
 def check_for_errors(state: RAGState) -> str:
-    """Conditional edge: stop pipeline if an error was recorded."""
+    """Conditional edge: route to the error handler when an error is recorded.
+
+    Args:
+        state: Current pipeline state.
+
+    Returns:
+        ``"error"`` if ``state["error"]`` is non-empty; ``"continue"`` otherwise.
+    """
     return "error" if state.get("error") else "continue"

@@ -1,22 +1,33 @@
-import json
+"""Bedrock Agent deployer: create, update, and publish versioned agent aliases."""
+
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any
+
 import boto3
 from botocore.exceptions import ClientError
+
+from config.settings import (
+    AWS_REGION,
+    LLM_MODEL_ID,
+    AGENT_IDLE_SESSION_TTL,
+    AGENT_PREPARE_TIMEOUT,
+    AGENT_POLL_INTERVAL,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class AgentConfig:
+    """Parameters needed to create or update a Bedrock Agent."""
+
     agent_name: str = "rag-document-agent"
-    agent_description: str = "RAG agent for answering questions from document knowledge base"
-    foundation_model: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    agent_description: str = "RAG agent for answering questions from a document knowledge base"
+    foundation_model: str = LLM_MODEL_ID
     agent_role_arn: str = ""
     knowledge_base_id: str = ""
-    idle_session_ttl: int = 600
+    idle_session_ttl: int = AGENT_IDLE_SESSION_TTL
     instruction: str = (
         "You are a helpful assistant that answers questions based on the provided knowledge base. "
         "Always ground your answers in the retrieved documents and cite your sources. "
@@ -26,14 +37,31 @@ class AgentConfig:
 
 
 class BedrockAgentDeployer:
-    """Create, update, and manage an Amazon Bedrock Agent with a Knowledge Base."""
+    """Create, update, and publish versioned aliases for an Amazon Bedrock Agent.
 
-    def __init__(self, region: str = "us-east-1"):
+    Responsibility: manage the Bedrock Agent control-plane lifecycle —
+    create/update, prepare (compile), associate a Knowledge Base, and publish
+    an alias.  Agent invocation (runtime) is handled in ``demo/invoke_agent.py``.
+    """
+
+    def __init__(self, region: str = AWS_REGION) -> None:
+        """Initialise the deployer.
+
+        Args:
+            region: AWS region where the Bedrock Agent lives.
+        """
         self.region = region
         self._client = boto3.client("bedrock-agent", region_name=region)
 
     def create_or_update_agent(self, config: AgentConfig) -> str:
-        """Create agent if it doesn't exist, otherwise update it. Returns agent_id."""
+        """Create the agent if it does not exist; otherwise update it in place.
+
+        Args:
+            config: Agent configuration parameters.
+
+        Returns:
+            Bedrock Agent ID (str).
+        """
         existing_id = self._find_agent(config.agent_name)
         if existing_id:
             logger.info("Updating existing agent: %s", existing_id)
@@ -44,25 +72,43 @@ class BedrockAgentDeployer:
         return self._create_agent(config)
 
     def prepare_agent(self, agent_id: str) -> bool:
-        """Prepare (compile) the agent so it can be tested."""
+        """Compile the agent so it can accept live traffic.
+
+        Args:
+            agent_id: ID of the agent to prepare.
+
+        Returns:
+            ``True`` on success; ``False`` if an error occurred.
+        """
         try:
             self._client.prepare_agent(agentId=agent_id)
-            self._wait_for_agent_status(agent_id, target_status="PREPARED")
+            self._wait_for_status(agent_id, target_status="PREPARED")
             logger.info("Agent %s prepared successfully", agent_id)
             return True
         except ClientError as e:
             logger.error("Failed to prepare agent %s: %s", agent_id, e)
             return False
 
-    def create_agent_alias(self, agent_id: str, alias_name: str = "prod") -> str:
-        """Create an agent alias pointing to the latest prepared version."""
+    def create_agent_alias(self, agent_id: str, alias_name: str) -> str:
+        """Publish a named alias pointing to the latest prepared agent version.
+
+        Args:
+            agent_id: ID of the agent to alias.
+            alias_name: Human-readable alias name (e.g. ``"prod"`` or ``"dev"``).
+
+        Returns:
+            The newly created alias ID.
+
+        Raises:
+            ClientError: If the Bedrock API call fails.
+        """
         try:
             response = self._client.create_agent_alias(
                 agentId=agent_id,
                 agentAliasName=alias_name,
-                description=f"Production alias for {alias_name}",
+                description=f"Alias '{alias_name}' for agent {agent_id}",
             )
-            alias_id = response["agentAlias"]["agentAliasId"]
+            alias_id: str = response["agentAlias"]["agentAliasId"]
             logger.info("Created alias '%s' (%s) for agent %s", alias_name, alias_id, agent_id)
             return alias_id
         except ClientError as e:
@@ -70,8 +116,21 @@ class BedrockAgentDeployer:
             raise
 
     def associate_knowledge_base(
-        self, agent_id: str, knowledge_base_id: str, description: str = "Primary knowledge base"
+        self,
+        agent_id: str,
+        knowledge_base_id: str,
+        description: str = "Primary knowledge base",
     ) -> bool:
+        """Associate a Bedrock Knowledge Base with the DRAFT version of the agent.
+
+        Args:
+            agent_id: ID of the agent to update.
+            knowledge_base_id: ID of the Knowledge Base to attach.
+            description: Human-readable description of the association.
+
+        Returns:
+            ``True`` on success; ``False`` if an error occurred.
+        """
         try:
             self._client.associate_agent_knowledge_base(
                 agentId=agent_id,
@@ -86,53 +145,37 @@ class BedrockAgentDeployer:
             logger.error("KB association failed: %s", e)
             return False
 
-    def delete_agent(self, agent_id: str) -> bool:
-        try:
-            self._client.delete_agent(agentId=agent_id, skipResourceInUseCheck=True)
-            logger.info("Deleted agent %s", agent_id)
-            return True
-        except ClientError as e:
-            logger.error("Failed to delete agent %s: %s", agent_id, e)
-            return False
-
-    def invoke_agent(
-        self, agent_id: str, alias_id: str, session_id: str, prompt: str
-    ) -> dict[str, Any]:
-        """Send a message to a deployed agent and return the response."""
-        runtime = boto3.client("bedrock-agent-runtime", region_name=self.region)
-        try:
-            response = runtime.invoke_agent(
-                agentId=agent_id,
-                agentAliasId=alias_id,
-                sessionId=session_id,
-                inputText=prompt,
-            )
-            completion = ""
-            for event in response.get("completion", []):
-                if "chunk" in event:
-                    completion += event["chunk"]["bytes"].decode("utf-8")
-            return {"answer": completion, "session_id": session_id}
-        except ClientError as e:
-            logger.error("Agent invocation error: %s", e)
-            raise
-
-    # ──────────────────────────────────────────────────────────────────────
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _create_agent(self, config: AgentConfig) -> str:
+        """Call the Bedrock API to create a new agent and wait for it to initialise.
+
+        Args:
+            config: Agent creation parameters.
+
+        Returns:
+            ID of the newly created agent.
+        """
         response = self._client.create_agent(
             agentName=config.agent_name,
-            description=config.description if hasattr(config, "description") else config.agent_description,
+            description=config.agent_description,
             foundationModel=config.foundation_model,
             agentResourceRoleArn=config.agent_role_arn,
             idleSessionTTLInSeconds=config.idle_session_ttl,
             instruction=config.instruction,
             tags=config.tags,
         )
-        agent_id = response["agent"]["agentId"]
-        self._wait_for_agent_status(agent_id, target_status="NOT_PREPARED")
+        agent_id: str = response["agent"]["agentId"]
+        self._wait_for_status(agent_id, target_status="NOT_PREPARED")
         return agent_id
 
     def _update_agent(self, agent_id: str, config: AgentConfig) -> None:
+        """Push updated configuration to an existing agent.
+
+        Args:
+            agent_id: ID of the agent to update.
+            config: New configuration to apply.
+        """
         self._client.update_agent(
             agentId=agent_id,
             agentName=config.agent_name,
@@ -143,6 +186,14 @@ class BedrockAgentDeployer:
         )
 
     def _find_agent(self, agent_name: str) -> str | None:
+        """Search all agents for one whose name matches *agent_name*.
+
+        Args:
+            agent_name: Display name of the agent to look for.
+
+        Returns:
+            Agent ID if found; ``None`` otherwise.
+        """
         paginator = self._client.get_paginator("list_agents")
         for page in paginator.paginate():
             for agent in page.get("agentSummaries", []):
@@ -150,17 +201,30 @@ class BedrockAgentDeployer:
                     return agent["agentId"]
         return None
 
-    def _wait_for_agent_status(
-        self, agent_id: str, target_status: str, max_wait: int = 120
+    def _wait_for_status(
+        self, agent_id: str, target_status: str
     ) -> None:
+        """Poll the agent until it reaches *target_status* or timeout.
+
+        Args:
+            agent_id: ID of the agent to poll.
+            target_status: Expected final status string (e.g. ``"PREPARED"``).
+
+        Raises:
+            RuntimeError: If the agent enters any FAILED state.
+            TimeoutError: If *target_status* is not reached within
+                ``AGENT_PREPARE_TIMEOUT`` seconds.
+        """
         waited = 0
-        while waited < max_wait:
+        while waited < AGENT_PREPARE_TIMEOUT:
             response = self._client.get_agent(agentId=agent_id)
-            status = response["agent"]["agentStatus"]
+            status: str = response["agent"]["agentStatus"]
             if status == target_status:
                 return
             if "FAILED" in status:
                 raise RuntimeError(f"Agent entered failed state: {status}")
-            time.sleep(5)
-            waited += 5
-        raise TimeoutError(f"Agent did not reach '{target_status}' within {max_wait}s")
+            time.sleep(AGENT_POLL_INTERVAL)
+            waited += AGENT_POLL_INTERVAL
+        raise TimeoutError(
+            f"Agent did not reach '{target_status}' within {AGENT_PREPARE_TIMEOUT}s"
+        )

@@ -1,12 +1,14 @@
-import json
+"""OpenSearch Serverless vector store: index and search chunk embeddings."""
+
 import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
+
 import boto3
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
+
+from config.settings import AWS_REGION, EMBED_DIMENSIONS, OPENSEARCH_PORT
 from ..chunking.base import Chunk
 
 logger = logging.getLogger(__name__)
@@ -14,20 +16,27 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SearchResult:
+    """A retrieved chunk paired with its similarity score."""
+
     chunk: Chunk
     score: float
 
 
 class OpenSearchVectorStore:
-    """Store and retrieve chunk embeddings using Amazon OpenSearch Serverless."""
+    """Store chunk embeddings in Amazon OpenSearch Serverless and retrieve by k-NN.
 
-    INDEX_SETTINGS = {
+    Responsibility: create the index, write chunk documents (with embeddings),
+    and run k-NN similarity queries.  Embedding generation is handled by
+    ``BedrockEmbeddings``; no embeddings are computed here.
+    """
+
+    _INDEX_SETTINGS: dict[str, Any] = {
         "settings": {"index": {"knn": True}},
         "mappings": {
             "properties": {
                 "embedding": {
                     "type": "knn_vector",
-                    "dimension": 1024,
+                    "dimension": EMBED_DIMENSIONS,
                     "method": {
                         "name": "hnsw",
                         "space_type": "cosinesimil",
@@ -46,30 +55,37 @@ class OpenSearchVectorStore:
         self,
         endpoint: str,
         index_name: str,
-        region: str = "us-east-1",
-        dimension: int = 1024,
-    ):
+        region: str = AWS_REGION,
+        dimension: int = EMBED_DIMENSIONS,
+    ) -> None:
+        """Initialise the vector store.
+
+        Args:
+            endpoint: OpenSearch Serverless collection endpoint hostname
+                (without scheme or port).
+            index_name: Name of the k-NN index to use.
+            region: AWS region of the collection.
+            dimension: Embedding vector dimension; must match the embedding model.
+        """
         self.endpoint = endpoint
         self.index_name = index_name
         self.region = region
         self.dimension = dimension
         self._client = self._build_client()
 
-    def _build_client(self) -> OpenSearch:
-        credentials = boto3.Session().get_credentials()
-        auth = AWSV4SignerAuth(credentials, self.region, "aoss")
-        return OpenSearch(
-            hosts=[{"host": self.endpoint, "port": 443}],
-            http_auth=auth,
-            use_ssl=True,
-            verify_certs=True,
-            connection_class=RequestsHttpConnection,
-        )
-
     def create_index(self, dimension: int | None = None) -> bool:
-        settings = self.INDEX_SETTINGS.copy()
-        if dimension:
-            settings["mappings"]["properties"]["embedding"]["dimension"] = dimension
+        """Create the k-NN index if it does not already exist.
+
+        Args:
+            dimension: Override the embedding dimension stored in the class-level
+                settings.  When ``None``, the constructor *dimension* is used.
+
+        Returns:
+            ``True`` if the index was created; ``False`` if it already existed.
+        """
+        settings = self._INDEX_SETTINGS.copy()
+        actual_dim = dimension or self.dimension
+        settings["mappings"]["properties"]["embedding"]["dimension"] = actual_dim
         if not self._client.indices.exists(self.index_name):
             self._client.indices.create(index=self.index_name, body=settings)
             logger.info("Created OpenSearch index: %s", self.index_name)
@@ -77,24 +93,33 @@ class OpenSearchVectorStore:
         return False
 
     def add_chunks(self, chunks: list[Chunk], embeddings: list[list[float]]) -> int:
+        """Index a list of chunks together with their embedding vectors.
+
+        Args:
+            chunks: Chunk objects whose text content and metadata will be stored.
+            embeddings: Parallel list of embedding vectors; must match *chunks* length.
+
+        Returns:
+            Number of chunks successfully indexed.
+
+        Raises:
+            ValueError: If *chunks* and *embeddings* have different lengths.
+        """
         if len(chunks) != len(embeddings):
             raise ValueError("Chunks and embeddings must have the same length")
 
         added = 0
         for chunk, embedding in zip(chunks, embeddings):
+            chunk_id = chunk.chunk_id or str(uuid.uuid4())
             doc = {
                 "embedding": embedding,
                 "content": chunk.content,
                 "document_id": chunk.document_id,
-                "chunk_id": chunk.chunk_id or str(uuid.uuid4()),
+                "chunk_id": chunk_id,
                 "metadata": chunk.metadata,
             }
             try:
-                self._client.index(
-                    index=self.index_name,
-                    body=doc,
-                    id=chunk.chunk_id or str(uuid.uuid4()),
-                )
+                self._client.index(index=self.index_name, body=doc, id=chunk_id)
                 added += 1
             except Exception as e:
                 logger.error("Failed to index chunk %s: %s", chunk.chunk_id, e)
@@ -105,16 +130,22 @@ class OpenSearchVectorStore:
     def similarity_search(
         self,
         query_embedding: list[float],
-        top_k: int = 5,
+        top_k: int,
         filters: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
+        """Run a k-NN query and return the *top_k* most similar chunks.
+
+        Args:
+            query_embedding: Dense vector representing the query.
+            top_k: Maximum number of results to return.
+            filters: Optional dict of ``{field: value}`` term filters applied as
+                a ``bool/filter`` wrapper around the k-NN query.
+
+        Returns:
+            List of SearchResult objects ordered by descending similarity score.
+        """
         knn_query: dict[str, Any] = {
-            "knn": {
-                "embedding": {
-                    "vector": query_embedding,
-                    "k": top_k,
-                }
-            }
+            "knn": {"embedding": {"vector": query_embedding, "k": top_k}}
         }
         if filters:
             knn_query = {
@@ -129,7 +160,7 @@ class OpenSearchVectorStore:
             body={"query": knn_query, "size": top_k},
         )
 
-        results = []
+        results: list[SearchResult] = []
         for hit in response["hits"]["hits"]:
             source = hit["_source"]
             chunk = Chunk(
@@ -141,8 +172,18 @@ class OpenSearchVectorStore:
             results.append(SearchResult(chunk=chunk, score=hit["_score"]))
         return results
 
-    def delete_index(self) -> bool:
-        if self._client.indices.exists(self.index_name):
-            self._client.indices.delete(self.index_name)
-            return True
-        return False
+    def _build_client(self) -> OpenSearch:
+        """Create and return an authenticated OpenSearch client for AOSS.
+
+        Returns:
+            Configured ``OpenSearch`` instance using AWS SigV4 signing.
+        """
+        credentials = boto3.Session().get_credentials()
+        auth = AWSV4SignerAuth(credentials, self.region, "aoss")
+        return OpenSearch(
+            hosts=[{"host": self.endpoint, "port": OPENSEARCH_PORT}],
+            http_auth=auth,
+            use_ssl=True,
+            verify_certs=True,
+            connection_class=RequestsHttpConnection,
+        )
