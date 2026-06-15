@@ -1,0 +1,15 @@
+# Core RAG & LangGraph
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# AWS SDK
+boto3>=1.34.0
+botocore>=1.34.0
+
+# OpenSearch vector store
+opensearch-py>=2.6.0
+requests-aws4auth>=1.3.0
+
+# Data / ML
+numpy>=1.26.0
+typing-extensions>=4.9.0
