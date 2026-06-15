@@ -194,6 +194,12 @@ jobs:
           aws s3 sync docs/ \
             s3://${{ needs.terraform-apply.outputs.documents_bucket }}/docs/ \
             --delete \
+            --exclude "*" \
+            --include "*.md" \
+            --include "*.pdf" \
+            --include "*.txt" \
+            --include "*.docx" \
+            --include "*.csv" \
             --only-show-errors
 
       - name: Report uploaded files

@@ -35,9 +35,18 @@ tfplan
 .env.*
 !.env.example
 credentials
+credentials.json
+secrets.json
 *.pem
 *.key
+*.p12
+*.pfx
 aws-exports.js
+aws-credentials
+
+# Local overrides
+local_settings.py
+local_config.py
 
 # IDE
 .vscode/

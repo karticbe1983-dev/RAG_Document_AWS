@@ -1,6 +1,6 @@
 # Amazon OpenSearch Serverless — vector store for RAG embeddings
 
-resource "aws_opensearchserverless_encryption_policy" "vectors" {
+resource "aws_opensearchserverless_security_policy" "encryption" {
   name        = "${var.project_name}-enc"
   type        = "encryption"
   description = "Encryption policy for RAG vector collection"
@@ -15,7 +15,7 @@ resource "aws_opensearchserverless_encryption_policy" "vectors" {
   })
 }
 
-resource "aws_opensearchserverless_network_policy" "vectors" {
+resource "aws_opensearchserverless_security_policy" "network" {
   name        = "${var.project_name}-net"
   type        = "network"
   description = "Public access for RAG vector collection (restrict in prod)"
@@ -80,8 +80,8 @@ resource "aws_opensearchserverless_collection" "vectors" {
   description = "Vector store for RAG document embeddings"
 
   depends_on = [
-    aws_opensearchserverless_encryption_policy.vectors,
-    aws_opensearchserverless_network_policy.vectors,
+    aws_opensearchserverless_security_policy.encryption,
+    aws_opensearchserverless_security_policy.network,
     aws_opensearchserverless_access_policy.vectors,
   ]
 }

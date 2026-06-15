@@ -83,6 +83,15 @@ TOKEN_OVERLAP_TOKENS: int = 50
 DEFAULT_TOP_K: int = 5
 """Number of chunks returned by the vector store per query."""
 
+HYBRID_SEARCH_ENABLED: bool = True
+"""When True, retrieval blends knn vector search with BM25 keyword search."""
+
+BM25_BOOST: float = 0.5
+"""Relative weight of the BM25 (keyword) clause vs the knn (vector) clause.
+Both clauses score on a 0–1 scale; this boost scales BM25 scores down so a
+pure-keyword match doesn't dominate a strong semantic match.  Raise toward 1.0
+to favour keyword precision; lower toward 0.1 to favour semantic recall."""
+
 # ── Generation ────────────────────────────────────────────────────────────────
 
 LLM_MAX_OUTPUT_TOKENS: int = 1024
