@@ -27,7 +27,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
 
   depends_on = [
     aws_iam_role_policy.bedrock_kb_policy,
-    aws_opensearchserverless_collection.vectors,
+    null_resource.create_vector_index,
   ]
 }
 

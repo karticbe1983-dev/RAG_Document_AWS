@@ -85,3 +85,28 @@ resource "aws_opensearchserverless_collection" "vectors" {
     aws_opensearchserverless_access_policy.vectors,
   ]
 }
+
+# Create the knn_vector index that Bedrock KB validates at creation time.
+# The collection must be ACTIVE and the index must exist before
+# aws_bedrockagent_knowledge_base can be provisioned successfully.
+resource "null_resource" "create_vector_index" {
+  triggers = {
+    collection_id = aws_opensearchserverless_collection.vectors.id
+  }
+
+  provisioner "local-exec" {
+    command = "${path.module}/../scripts/create_opensearch_index.sh"
+    environment = {
+      OPENSEARCH_ENDPOINT = trimprefix(aws_opensearchserverless_collection.vectors.collection_endpoint, "https://")
+      AWS_REGION          = var.aws_region
+      INDEX_NAME          = "rag-index"
+      EMBED_DIMENSIONS    = tostring(var.embedding_dimensions)
+      COLLECTION_NAME     = var.opensearch_collection_name
+    }
+  }
+
+  depends_on = [
+    aws_opensearchserverless_collection.vectors,
+    aws_opensearchserverless_access_policy.vectors,
+  ]
+}
