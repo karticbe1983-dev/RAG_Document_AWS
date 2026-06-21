@@ -107,7 +107,10 @@ resource "aws_iam_openid_connect_provider" "github" {
 
   url = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  thumbprint_list = [
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+  ]
 }
 
 resource "aws_iam_role" "github_actions" {
@@ -123,7 +126,7 @@ resource "aws_iam_role" "github_actions" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:*:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = "repo:karticbe1983-dev/RAG_Document_AWS:ref:refs/heads/main"
         }
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
@@ -140,37 +143,92 @@ resource "aws_iam_role_policy" "github_actions_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "S3DocumentSync"
+        Sid    = "TerraformStateAccess"
         Effect = "Allow"
-        Action = ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetObject"]
-        Resource = [
-          aws_s3_bucket.documents.arn,
-          "${aws_s3_bucket.documents.arn}/*",
-          aws_s3_bucket.artifacts.arn,
-          "${aws_s3_bucket.artifacts.arn}/*",
-        ]
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket",
+                  "s3:GetBucketVersioning", "s3:GetBucketAcl", "s3:GetBucketLocation"]
+        Resource = ["arn:aws:s3:::*-tfstate*", "arn:aws:s3:::*-tfstate*/*"]
       },
       {
-        Sid    = "BedrockKBSync"
+        Sid    = "S3Manage"
         Effect = "Allow"
         Action = [
-          "bedrock:StartIngestionJob",
-          "bedrock:GetIngestionJob",
-          "bedrock:ListIngestionJobs",
-          "bedrock:UpdateAgent",
-          "bedrock:PrepareAgent",
-          "bedrock:CreateAgentAlias",
-          "bedrock:UpdateAgentAlias",
-          "bedrock:GetAgent",
-          "bedrock:ListAgents",
+          "s3:CreateBucket", "s3:DeleteBucket",
+          "s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket",
+          "s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy",
+          "s3:GetBucketVersioning", "s3:PutBucketVersioning",
+          "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration",
+          "s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock",
+          "s3:GetBucketAcl", "s3:GetBucketLocation", "s3:GetBucketCORS",
+          "s3:ListAllMyBuckets",
         ]
         Resource = "*"
       },
       {
-        Sid    = "TerraformStateAccess"
+        Sid    = "OpenSearchServerlessManage"
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-        Resource = ["arn:aws:s3:::*-tfstate*", "arn:aws:s3:::*-tfstate*/*"]
+        Action = [
+          "aoss:CreateCollection", "aoss:DeleteCollection", "aoss:UpdateCollection",
+          "aoss:BatchGetCollection", "aoss:ListCollections",
+          "aoss:CreateSecurityPolicy", "aoss:DeleteSecurityPolicy",
+          "aoss:UpdateSecurityPolicy", "aoss:GetSecurityPolicy", "aoss:ListSecurityPolicies",
+          "aoss:CreateAccessPolicy", "aoss:DeleteAccessPolicy",
+          "aoss:UpdateAccessPolicy", "aoss:GetAccessPolicy", "aoss:ListAccessPolicies",
+          "aoss:APIAccessAll",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "BedrockManage"
+        Effect = "Allow"
+        Action = [
+          "bedrock:CreateKnowledgeBase", "bedrock:DeleteKnowledgeBase",
+          "bedrock:UpdateKnowledgeBase", "bedrock:GetKnowledgeBase", "bedrock:ListKnowledgeBases",
+          "bedrock:CreateDataSource", "bedrock:DeleteDataSource",
+          "bedrock:UpdateDataSource", "bedrock:GetDataSource",
+          "bedrock:StartIngestionJob", "bedrock:GetIngestionJob", "bedrock:ListIngestionJobs",
+          "bedrock:CreateAgent", "bedrock:DeleteAgent", "bedrock:UpdateAgent",
+          "bedrock:GetAgent", "bedrock:ListAgents", "bedrock:PrepareAgent",
+          "bedrock:CreateAgentAlias", "bedrock:DeleteAgentAlias",
+          "bedrock:UpdateAgentAlias", "bedrock:GetAgentAlias", "bedrock:ListAgentAliases",
+          "bedrock:AssociateAgentKnowledgeBase", "bedrock:DisassociateAgentKnowledgeBase",
+          "bedrock:GetAgentKnowledgeBase", "bedrock:ListAgentKnowledgeBases",
+          "bedrock:TagResource", "bedrock:UntagResource", "bedrock:ListTagsForResource",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "IAMManage"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole", "iam:GetRole",
+          "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy",
+          "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies",
+          "iam:ListRolePolicies", "iam:PassRole",
+          "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
+          "iam:CreateOpenIDConnectProvider", "iam:DeleteOpenIDConnectProvider",
+          "iam:GetOpenIDConnectProvider", "iam:UpdateOpenIDConnectProvider",
+          "iam:ListOpenIDConnectProviders", "iam:TagOpenIDConnectProvider",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchLogsManage"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy",
+          "logs:DescribeLogGroups", "logs:ListTagsLogGroup",
+          "logs:TagLogGroup", "logs:UntagLogGroup", "logs:ListTagsForResource",
+          "logs:TagResource",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "STSCallerIdentity"
+        Effect   = "Allow"
+        Action   = ["sts:GetCallerIdentity"]
+        Resource = "*"
       },
     ]
   })

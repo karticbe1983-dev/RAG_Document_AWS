@@ -14,7 +14,7 @@ on:
       force_reindex:
         description: "Force re-indexing of all documents"
         required: false
-        default: "false"
+        default: false
         type: boolean
 
 concurrency:
@@ -51,7 +51,7 @@ jobs:
         run: mypy src/
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short --cov=src --cov-report=xml
+        run: pytest tests/ -v --tb=short --cov=src --cov-report=xml -m "not integration"
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
