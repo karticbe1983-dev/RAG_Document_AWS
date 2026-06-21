@@ -97,11 +97,10 @@ resource "null_resource" "create_vector_index" {
   provisioner "local-exec" {
     command = "${path.module}/../scripts/create_opensearch_index.sh"
     environment = {
-      OPENSEARCH_ENDPOINT = trimprefix(aws_opensearchserverless_collection.vectors.collection_endpoint, "https://")
+      OPENSEARCH_ENDPOINT = aws_opensearchserverless_collection.vectors.collection_endpoint
       AWS_REGION          = var.aws_region
-      INDEX_NAME          = "rag-index"
+      INDEX_NAME          = var.opensearch_index_name
       EMBED_DIMENSIONS    = tostring(var.embedding_dimensions)
-      COLLECTION_NAME     = var.opensearch_collection_name
     }
   }
 

@@ -16,7 +16,7 @@ resource "aws_bedrockagent_knowledge_base" "main" {
     type = "OPENSEARCH_SERVERLESS"
     opensearch_serverless_configuration {
       collection_arn    = aws_opensearchserverless_collection.vectors.arn
-      vector_index_name = "rag-index"
+      vector_index_name = var.opensearch_index_name
       field_mapping {
         vector_field   = "embedding"
         text_field     = "content"

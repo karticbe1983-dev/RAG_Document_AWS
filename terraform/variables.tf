@@ -39,6 +39,12 @@ variable "opensearch_collection_name" {
   default     = "rag-vectors"
 }
 
+variable "opensearch_index_name" {
+  description = "Name of the knn_vector index inside the OpenSearch Serverless collection"
+  type        = string
+  default     = "rag-index"
+}
+
 variable "bedrock_embed_model_id" {
   description = "Bedrock embedding model ID"
   type        = string
