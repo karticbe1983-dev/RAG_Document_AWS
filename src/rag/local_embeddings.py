@@ -3,7 +3,6 @@
 import hashlib
 
 import numpy as np
-
 from config.settings import EMBED_DIMENSIONS
 
 

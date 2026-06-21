@@ -4,11 +4,12 @@ import re
 from typing import Any
 
 from config.settings import (
-    SENTENCE_PER_CHUNK,
-    SENTENCE_OVERLAP,
-    SENTENCE_MIN_LENGTH,
     SEARCH_PREFIX_LEN,
+    SENTENCE_MIN_LENGTH,
+    SENTENCE_OVERLAP,
+    SENTENCE_PER_CHUNK,
 )
+
 from .base import BaseChunker, Chunk
 
 

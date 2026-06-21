@@ -1,7 +1,7 @@
 from .factory import ChunkingFactory, ChunkingStrategy
 from .fixed_size import FixedSizeChunker
-from .recursive import RecursiveChunker
 from .markdown_aware import MarkdownChunker
+from .recursive import RecursiveChunker
 from .semantic import SemanticChunker
 from .sentence import SentenceChunker
 from .sliding_window import SlidingWindowChunker
@@ -11,8 +11,8 @@ __all__ = [
     "ChunkingFactory",
     "ChunkingStrategy",
     "FixedSizeChunker",
-    "RecursiveChunker",
     "MarkdownChunker",
+    "RecursiveChunker",
     "SemanticChunker",
     "SentenceChunker",
     "SlidingWindowChunker",

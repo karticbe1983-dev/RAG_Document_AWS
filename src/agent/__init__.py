@@ -1,3 +1,3 @@
-from .bedrock_agent import BedrockAgentDeployer, AgentConfig
+from .bedrock_agent import AgentConfig, BedrockAgentDeployer
 
-__all__ = ["BedrockAgentDeployer", "AgentConfig"]
+__all__ = ["AgentConfig", "BedrockAgentDeployer"]

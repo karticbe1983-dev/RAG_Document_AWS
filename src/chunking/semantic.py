@@ -4,13 +4,13 @@ import re
 from typing import Any
 
 import numpy as np
-
 from config.settings import (
-    SEMANTIC_BREAKPOINT_THRESHOLD,
-    SEMANTIC_MIN_CHUNK_SIZE,
-    SEMANTIC_MAX_CHUNK_SIZE,
     SEARCH_PREFIX_LEN,
+    SEMANTIC_BREAKPOINT_THRESHOLD,
+    SEMANTIC_MAX_CHUNK_SIZE,
+    SEMANTIC_MIN_CHUNK_SIZE,
 )
+
 from .base import BaseChunker, Chunk
 
 

@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from config.settings import SLIDING_WINDOW_SIZE, SLIDING_STEP_SIZE, SEARCH_PREFIX_LEN
+from config.settings import SEARCH_PREFIX_LEN, SLIDING_STEP_SIZE, SLIDING_WINDOW_SIZE
+
 from .base import BaseChunker, Chunk
 
 

@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from config.settings import FIXED_CHUNK_SIZE, FIXED_CHUNK_OVERLAP
+from config.settings import FIXED_CHUNK_OVERLAP, FIXED_CHUNK_SIZE
+
 from .base import BaseChunker, Chunk
 
 

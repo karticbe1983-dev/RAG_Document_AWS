@@ -5,11 +5,9 @@ MagicMock instances so tests run without credentials or deployed infrastructure.
 """
 
 import json
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from src.chunking.base import Chunk
 from src.rag.document_loader import Document, S3DocumentLoader
 from src.rag.embeddings import BedrockEmbeddings
@@ -17,7 +15,6 @@ from src.rag.generator import RAGGenerator
 from src.rag.in_memory_vector_store import InMemoryVectorStore
 from src.rag.retriever import RAGRetriever
 from src.rag.vector_store import SearchResult
-
 
 # ── Primitive data objects ────────────────────────────────────────────────────
 

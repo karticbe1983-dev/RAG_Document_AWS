@@ -12,10 +12,9 @@ Usage::
 """
 
 import argparse
-import os
 
-from src.graph.workflow import RAGWorkflow, WorkflowConfig
 from src.chunking.factory import ChunkingFactory
+from src.graph.workflow import RAGWorkflow, WorkflowConfig
 
 
 def main() -> None:

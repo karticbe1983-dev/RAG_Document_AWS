@@ -53,7 +53,7 @@ def create_or_update_alias(agent_id: str, alias_name: str, region: str) -> str:
                     agentId=agent_id,
                     agentAliasId=alias_id,
                     agentAliasName=alias_name,
-                    description=f"Updated by CI/CD pipeline",
+                    description="Updated by CI/CD pipeline",
                 )
                 return alias_id
 
@@ -61,7 +61,7 @@ def create_or_update_alias(agent_id: str, alias_name: str, region: str) -> str:
     response = client.create_agent_alias(
         agentId=agent_id,
         agentAliasName=alias_name,
-        description=f"Deployed via CI/CD pipeline",
+        description="Deployed via CI/CD pipeline",
     )
     alias_id = response["agentAlias"]["agentAliasId"]
     logger.info("Created alias '%s' (%s)", alias_name, alias_id)

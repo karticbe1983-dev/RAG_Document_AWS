@@ -6,8 +6,7 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
-
-from config.settings import AWS_REGION, EMBED_MODEL_ID, EMBED_DIMENSIONS, EMBED_BATCH_SIZE
+from config.settings import AWS_REGION, EMBED_BATCH_SIZE, EMBED_DIMENSIONS, EMBED_MODEL_ID
 
 logger = logging.getLogger(__name__)
 

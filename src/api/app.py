@@ -23,13 +23,14 @@ Environment variables:
 
 import logging
 import os
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator
+from typing import Any
 
+from config.settings import AWS_REGION, DEFAULT_TOP_K, OPENSEARCH_INDEX_NAME
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from config.settings import AWS_REGION, DEFAULT_TOP_K, OPENSEARCH_INDEX_NAME
 from src.chunking.factory import ChunkingFactory, ChunkingStrategy
 from src.graph.workflow import RAGWorkflow, WorkflowConfig
 
@@ -96,10 +97,10 @@ def _build_local_workflow() -> RAGWorkflow:
     and indexed once at startup so every query works without force_reindex=true.
     """
     from src.chunking.factory import ChunkingFactory, ChunkingStrategy
+    from src.rag.in_memory_vector_store import InMemoryVectorStore
     from src.rag.local_document_loader import LocalDocumentLoader
     from src.rag.local_embeddings import LocalEmbeddings
     from src.rag.local_generator import LocalGenerator
-    from src.rag.in_memory_vector_store import InMemoryVectorStore
 
     local_loader = LocalDocumentLoader("docs")
     local_embeddings = LocalEmbeddings()

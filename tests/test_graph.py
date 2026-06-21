@@ -1,20 +1,20 @@
 """Unit tests for LangGraph workflow nodes and routing logic."""
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
+from src.chunking.base import Chunk
 from src.chunking.factory import ChunkingStrategy
-from src.graph.state import RAGState
 from src.graph.nodes import (
     build_chunk_documents_node,
+    build_generate_node,
     build_load_documents_node,
     build_retrieve_node,
-    build_generate_node,
     check_for_errors,
 )
+from src.graph.state import RAGState
 from src.rag.document_loader import Document
 from src.rag.vector_store import SearchResult
-from src.chunking.base import Chunk
 
 
 def _make_state(**overrides) -> RAGState:

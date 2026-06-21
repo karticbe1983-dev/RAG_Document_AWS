@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from config.settings import TOKEN_MAX_TOKENS, TOKEN_OVERLAP_TOKENS, SEARCH_PREFIX_LEN
+from config.settings import SEARCH_PREFIX_LEN, TOKEN_MAX_TOKENS, TOKEN_OVERLAP_TOKENS
+
 from .base import BaseChunker, Chunk
 
 

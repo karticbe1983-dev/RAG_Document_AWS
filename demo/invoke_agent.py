@@ -17,9 +17,8 @@ import argparse
 import uuid
 
 import boto3
-
-from src.agent.bedrock_agent import AgentConfig, BedrockAgentDeployer
 from config.settings import AWS_REGION
+from src.agent.bedrock_agent import AgentConfig, BedrockAgentDeployer
 
 
 def main() -> None:

@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 import boto3
 from botocore.exceptions import ClientError
+from config.settings import AWS_REGION, LLM_MAX_OUTPUT_TOKENS, LLM_MODEL_ID
 
-from config.settings import AWS_REGION, LLM_MODEL_ID, LLM_MAX_OUTPUT_TOKENS
 from .vector_store import SearchResult
 
 logger = logging.getLogger(__name__)

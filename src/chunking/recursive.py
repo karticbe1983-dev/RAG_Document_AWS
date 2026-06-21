@@ -3,10 +3,11 @@
 from typing import Any
 
 from config.settings import (
-    RECURSIVE_CHUNK_SIZE,
     RECURSIVE_CHUNK_OVERLAP,
+    RECURSIVE_CHUNK_SIZE,
     RECURSIVE_SEPARATORS,
 )
+
 from .base import BaseChunker, Chunk
 
 

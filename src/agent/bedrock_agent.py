@@ -6,13 +6,12 @@ from dataclasses import dataclass, field
 
 import boto3
 from botocore.exceptions import ClientError
-
 from config.settings import (
+    AGENT_IDLE_SESSION_TTL,
+    AGENT_POLL_INTERVAL,
+    AGENT_PREPARE_TIMEOUT,
     AWS_REGION,
     LLM_MODEL_ID,
-    AGENT_IDLE_SESSION_TTL,
-    AGENT_PREPARE_TIMEOUT,
-    AGENT_POLL_INTERVAL,
 )
 
 logger = logging.getLogger(__name__)

@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from config.settings import DEFAULT_TOP_K, HYBRID_SEARCH_ENABLED
+
 from .embeddings import BedrockEmbeddings
 from .vector_store import OpenSearchVectorStore, SearchResult
 

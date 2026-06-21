@@ -5,6 +5,7 @@ updates returned by each node into the accumulated state.
 """
 
 from typing import Any
+
 from typing_extensions import TypedDict
 
 from ..chunking.base import Chunk
