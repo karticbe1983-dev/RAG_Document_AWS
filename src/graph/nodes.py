@@ -8,14 +8,20 @@ that accepts a ``RAGState`` dict and returns a partial-state update dict.
 import logging
 from typing import Any
 
-from config.settings import DEFAULT_TOP_K, CHUNK_PREVIEW_LEN, HYBRID_SEARCH_ENABLED, QUESTION_LOG_LEN
-from .state import RAGState
+from config.settings import (
+    CHUNK_PREVIEW_LEN,
+    DEFAULT_TOP_K,
+    HYBRID_SEARCH_ENABLED,
+    QUESTION_LOG_LEN,
+)
+
 from ..chunking.factory import ChunkingFactory, ChunkingStrategy
 from ..rag.document_loader import S3DocumentLoader
 from ..rag.embeddings import BedrockEmbeddings
-from ..rag.retriever import RAGRetriever
 from ..rag.generator import RAGGenerator
+from ..rag.retriever import RAGRetriever
 from ..rag.vector_store import OpenSearchVectorStore
+from .state import RAGState
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +52,8 @@ def build_load_documents_node(
             docs = loader.load_all(prefix=state.get("s3_prefix", ""))
             return {
                 "documents": docs,
-                "processing_steps": state.get("processing_steps", [])
-                + [f"Loaded {len(docs)} documents from S3"],
+                "processing_steps": [*state.get("processing_steps", []),
+                                     f"Loaded {len(docs)} documents from S3"],
             }
         except Exception as e:
             logger.error("Document loading failed: %s", e)
@@ -95,8 +101,8 @@ def build_chunk_documents_node(
 
         return {
             "chunks": all_chunks,
-            "processing_steps": state.get("processing_steps", [])
-            + [f"Created {len(all_chunks)} chunks using '{strategy}'"],
+            "processing_steps": [*state.get("processing_steps", []),
+                                 f"Created {len(all_chunks)} chunks using '{strategy}'"],
         }
 
     return chunk_documents
@@ -128,8 +134,8 @@ def build_embed_chunks_node(embeddings: BedrockEmbeddings) -> Any:
             vecs = embeddings.embed_batch(texts)
             return {
                 "embeddings": vecs,
-                "processing_steps": state.get("processing_steps", [])
-                + [f"Generated {len(vecs)} embeddings"],
+                "processing_steps": [*state.get("processing_steps", []),
+                                     f"Generated {len(vecs)} embeddings"],
             }
         except Exception as e:
             logger.error("Embedding failed: %s", e)
@@ -162,8 +168,8 @@ def build_store_vectors_node(vector_store: OpenSearchVectorStore) -> Any:
         """
         if not state.get("force_reindex", False):
             return {
-                "processing_steps": state.get("processing_steps", [])
-                + ["Skipped vector store update (force_reindex=False)"]
+                "processing_steps": [*state.get("processing_steps", []),
+                                     "Skipped vector store update (force_reindex=False)"]
             }
         chunks = state.get("chunks", [])
         embeddings = state.get("embeddings", [])
@@ -171,8 +177,8 @@ def build_store_vectors_node(vector_store: OpenSearchVectorStore) -> Any:
             vector_store.create_index()
             added = vector_store.add_chunks(chunks, embeddings)
             return {
-                "processing_steps": state.get("processing_steps", [])
-                + [f"Stored {added} vectors in OpenSearch"]
+                "processing_steps": [*state.get("processing_steps", []),
+                                     f"Stored {added} vectors in OpenSearch"]
             }
         except Exception as e:
             logger.error("Vector store error: %s", e)
@@ -217,8 +223,8 @@ def build_retrieve_node(retriever: RAGRetriever) -> Any:
             )
             return {
                 "search_results": results,
-                "processing_steps": state.get("processing_steps", [])
-                + [f"Retrieved {len(results)} relevant chunks"],
+                "processing_steps": [*state.get("processing_steps", []),
+                                     f"Retrieved {len(results)} relevant chunks"],
             }
         except Exception as e:
             logger.error("Retrieval failed: %s", e)
@@ -269,8 +275,8 @@ def build_generate_node(generator: RAGGenerator) -> Any:
                     "input_tokens": response.input_tokens,
                     "output_tokens": response.output_tokens,
                 },
-                "processing_steps": state.get("processing_steps", [])
-                + ["Generated answer with Bedrock Claude"],
+                "processing_steps": [*state.get("processing_steps", []),
+                                     "Generated answer with Bedrock Claude"],
             }
         except Exception as e:
             logger.error("Generation failed: %s", e)

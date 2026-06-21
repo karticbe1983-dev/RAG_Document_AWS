@@ -4,8 +4,8 @@ import pytest
 from src.chunking.base import Chunk
 from src.chunking.factory import ChunkingFactory, ChunkingStrategy
 from src.chunking.fixed_size import FixedSizeChunker
-from src.chunking.recursive import RecursiveChunker
 from src.chunking.markdown_aware import MarkdownChunker
+from src.chunking.recursive import RecursiveChunker
 from src.chunking.semantic import SemanticChunker
 from src.chunking.sentence import SentenceChunker
 from src.chunking.sliding_window import SlidingWindowChunker
@@ -126,14 +126,18 @@ class TestSemanticChunker:
     def test_with_mock_embedding_fn(self):
         import random
         random.seed(42)
-        # Mock embedding that returns random vectors (triggers split everywhere)
-        mock_embed = lambda text: [random.random() for _ in range(10)]
+
+        def mock_embed(text: str) -> list[float]:
+            return [random.random() for _ in range(10)]
+
         chunker = SemanticChunker(embedding_fn=mock_embed, breakpoint_threshold=0.99)
         chunks = chunker.chunk(SAMPLE_TEXT, METADATA)
         assert len(chunks) >= 1
 
     def test_high_threshold_produces_fewer_chunks(self):
-        mock_embed = lambda text: [1.0] * 10  # All embeddings identical → no splits
+        def mock_embed(text: str) -> list[float]:
+            return [1.0] * 10
+
         chunker = SemanticChunker(embedding_fn=mock_embed, breakpoint_threshold=0.5)
         chunks = chunker.chunk(SAMPLE_TEXT, METADATA)
         # With identical embeddings, everything should merge

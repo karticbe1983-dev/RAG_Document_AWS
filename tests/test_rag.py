@@ -1,16 +1,14 @@
 """Unit tests for RAG core modules (all AWS calls are mocked)."""
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch
 
-from src.rag.document_loader import S3DocumentLoader, Document
-from src.rag.embeddings import BedrockEmbeddings
-from src.rag.retriever import RAGRetriever
-from src.rag.generator import RAGGenerator, RAGResponse
-from src.rag.vector_store import OpenSearchVectorStore, SearchResult
 from src.chunking.base import Chunk
-
+from src.rag.document_loader import S3DocumentLoader
+from src.rag.embeddings import BedrockEmbeddings
+from src.rag.generator import RAGGenerator, RAGResponse
+from src.rag.retriever import RAGRetriever
+from src.rag.vector_store import OpenSearchVectorStore, SearchResult
 
 # ── Document Loader ───────────────────────────────────────────────────────────
 
@@ -198,7 +196,7 @@ class TestHybridSearch:
         query = kwargs["body"]["query"]
         assert "bool" in query
         clauses = query["bool"]["should"]
-        types = {list(c.keys())[0] for c in clauses}
+        types = {next(iter(c.keys())) for c in clauses}
         assert "knn" in types
         assert "match" in types
 

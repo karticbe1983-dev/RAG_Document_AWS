@@ -88,7 +88,7 @@ HYBRID_SEARCH_ENABLED: bool = True
 
 BM25_BOOST: float = 0.5
 """Relative weight of the BM25 (keyword) clause vs the knn (vector) clause.
-Both clauses score on a 0–1 scale; this boost scales BM25 scores down so a
+Both clauses score on a 0-1 scale; this boost scales BM25 scores down so a
 pure-keyword match doesn't dominate a strong semantic match.  Raise toward 1.0
 to favour keyword precision; lower toward 0.1 to favour semantic recall."""
 

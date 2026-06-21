@@ -4,10 +4,11 @@ import re
 from typing import Any
 
 from config.settings import (
-    MARKDOWN_MAX_CHUNK_SIZE,
     MARKDOWN_CHUNK_OVERLAP,
     MARKDOWN_HEADERS,
+    MARKDOWN_MAX_CHUNK_SIZE,
 )
+
 from .base import BaseChunker, Chunk
 
 
@@ -32,14 +33,14 @@ class MarkdownChunker(BaseChunker):
 
         Args:
             headers_to_split_on: List of (markdown_prefix, label) pairs, e.g.
-                ``[("#", "h1"), ("##", "h2")]``.  Defaults to h1–h4.
+                ``[("#", "h1"), ("##", "h2")]``.  Defaults to h1-h4.
             max_chunk_size: Characters above which a section is sub-split.
             chunk_overlap: Characters of overlap when sub-splitting an oversized section.
         """
         self.headers_to_split_on = headers_to_split_on or list(MARKDOWN_HEADERS)
         self.max_chunk_size = max_chunk_size
         self.chunk_overlap = chunk_overlap
-        self._header_levels: dict[str, str] = {h: lvl for h, lvl in self.headers_to_split_on}
+        self._header_levels: dict[str, str] = dict(self.headers_to_split_on)
 
     def chunk(self, text: str, metadata: dict[str, Any] | None = None) -> list[Chunk]:
         """Split *text* on markdown headers and return one Chunk per section.

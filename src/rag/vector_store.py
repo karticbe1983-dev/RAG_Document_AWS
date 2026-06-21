@@ -3,12 +3,12 @@
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import boto3
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-
 from config.settings import AWS_REGION, BM25_BOOST, EMBED_DIMENSIONS, OPENSEARCH_PORT
+from opensearchpy import AWSV4SignerAuth, OpenSearch, RequestsHttpConnection
+
 from ..chunking.base import Chunk
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class OpenSearchVectorStore:
     ``BedrockEmbeddings``; no embeddings are computed here.
     """
 
-    _INDEX_SETTINGS: dict[str, Any] = {
+    _INDEX_SETTINGS: ClassVar[dict[str, Any]] = {
         "settings": {"index": {"knn": True}},
         "mappings": {
             "properties": {
@@ -109,7 +109,7 @@ class OpenSearchVectorStore:
             raise ValueError("Chunks and embeddings must have the same length")
 
         added = 0
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk, embedding in zip(chunks, embeddings, strict=False):
             chunk_id = chunk.chunk_id or str(uuid.uuid4())
             doc = {
                 "embedding": embedding,

@@ -1,28 +1,37 @@
 """Factory that instantiates the correct chunker for a given strategy name."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from config.settings import (
-    FIXED_CHUNK_SIZE, FIXED_CHUNK_OVERLAP,
-    RECURSIVE_CHUNK_SIZE, RECURSIVE_CHUNK_OVERLAP,
-    MARKDOWN_MAX_CHUNK_SIZE, MARKDOWN_CHUNK_OVERLAP,
-    SEMANTIC_BREAKPOINT_THRESHOLD, SEMANTIC_MIN_CHUNK_SIZE, SEMANTIC_MAX_CHUNK_SIZE,
-    SENTENCE_PER_CHUNK, SENTENCE_OVERLAP,
-    SLIDING_WINDOW_SIZE, SLIDING_STEP_SIZE,
-    TOKEN_MAX_TOKENS, TOKEN_OVERLAP_TOKENS,
+    FIXED_CHUNK_OVERLAP,
+    FIXED_CHUNK_SIZE,
+    MARKDOWN_CHUNK_OVERLAP,
+    MARKDOWN_MAX_CHUNK_SIZE,
+    RECURSIVE_CHUNK_OVERLAP,
+    RECURSIVE_CHUNK_SIZE,
+    SEMANTIC_BREAKPOINT_THRESHOLD,
+    SEMANTIC_MAX_CHUNK_SIZE,
+    SEMANTIC_MIN_CHUNK_SIZE,
+    SENTENCE_OVERLAP,
+    SENTENCE_PER_CHUNK,
+    SLIDING_STEP_SIZE,
+    SLIDING_WINDOW_SIZE,
+    TOKEN_MAX_TOKENS,
+    TOKEN_OVERLAP_TOKENS,
 )
+
 from .base import BaseChunker
 from .fixed_size import FixedSizeChunker
-from .recursive import RecursiveChunker
 from .markdown_aware import MarkdownChunker
+from .recursive import RecursiveChunker
 from .semantic import SemanticChunker
 from .sentence import SentenceChunker
 from .sliding_window import SlidingWindowChunker
 from .token_based import TokenChunker
 
 
-class ChunkingStrategy(str, Enum):
+class ChunkingStrategy(StrEnum):
     """Canonical names for every supported chunking strategy."""
 
     FIXED_SIZE = "fixed_size"

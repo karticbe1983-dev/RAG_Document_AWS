@@ -4,33 +4,33 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from langgraph.graph import StateGraph, END
-
 from config.settings import (
     AWS_REGION,
+    DEFAULT_TOP_K,
+    EMBED_DIMENSIONS,
     EMBED_MODEL_ID,
     HYBRID_SEARCH_ENABLED,
     LLM_MODEL_ID,
-    EMBED_DIMENSIONS,
-    DEFAULT_TOP_K,
     OPENSEARCH_INDEX_NAME,
 )
-from .state import RAGState
-from .nodes import (
-    build_load_documents_node,
-    build_chunk_documents_node,
-    build_embed_chunks_node,
-    build_store_vectors_node,
-    build_retrieve_node,
-    build_generate_node,
-    check_for_errors,
-)
+from langgraph.graph import END, StateGraph
+
 from ..chunking.factory import ChunkingStrategy
 from ..rag.document_loader import S3DocumentLoader
 from ..rag.embeddings import BedrockEmbeddings
-from ..rag.vector_store import OpenSearchVectorStore
-from ..rag.retriever import RAGRetriever
 from ..rag.generator import RAGGenerator
+from ..rag.retriever import RAGRetriever
+from ..rag.vector_store import OpenSearchVectorStore
+from .nodes import (
+    build_chunk_documents_node,
+    build_embed_chunks_node,
+    build_generate_node,
+    build_load_documents_node,
+    build_retrieve_node,
+    build_store_vectors_node,
+    check_for_errors,
+)
+from .state import RAGState
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class RAGWorkflow:
 
         load_documents
              ↓ [check_for_errors]
-        route_chunking ──[_select_chunking_node]──> chunk_<strategy>  (×7)
+        route_chunking ──[_select_chunking_node]──> chunk_<strategy>  (x7)
                                                           ↓
                                                     embed_chunks
                                                           ↓ [check_for_errors]
